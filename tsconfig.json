@@ -28,7 +28,9 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     },
     "allowJs": true,
     "strict": false,
@@ -48,6 +50,7 @@
   "include": [
     "./scripts/**/*.ts",
     "./src/**/*.ts",
+    "./src/**/*.tsx",
     ".next/types/**/*.ts"
   ]
 }

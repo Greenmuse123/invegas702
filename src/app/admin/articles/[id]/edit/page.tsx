@@ -4,6 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Image from 'next/image';
+import { BUCKETS } from '@/lib/constants';
+import { useAuth } from '@/components/Providers';
 
 interface Article {
   id: string;
@@ -13,15 +15,20 @@ interface Article {
   image_url: string | null;
   is_featured: boolean;
   status: 'draft' | 'published';
+  magazine_id: string | null;
+  published_at: string | null;
+  category: string;
 }
 
 export default function EditArticle({ params }: { params: { id: string } }) {
   const router = useRouter();
+  const { supabase: authSupabase } = useAuth();
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchArticle();
@@ -29,7 +36,10 @@ export default function EditArticle({ params }: { params: { id: string } }) {
 
   const fetchArticle = async () => {
     try {
-      const { data, error } = await supabase
+      // Use the authenticated client if available, otherwise fall back to the regular client
+      const client = authSupabase || supabase;
+      
+      const { data, error } = await client
         .from('articles')
         .select('*')
         .eq('id', params.id)
@@ -40,8 +50,9 @@ export default function EditArticle({ params }: { params: { id: string } }) {
       if (data.image_url) {
         setPreviewUrl(data.image_url);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching article:', error);
+      setError(error.message);
     } finally {
       setLoading(false);
     }
@@ -52,42 +63,75 @@ export default function EditArticle({ params }: { params: { id: string } }) {
     if (!article) return;
 
     setIsSubmitting(true);
+    setError(null);
+    
     try {
+      // Make sure we have an authenticated Supabase client
+      if (!authSupabase) {
+        throw new Error('Authentication required');
+      }
+      
       let imageUrl = article.image_url;
 
       if (imageFile) {
+        // Create FormData for image upload
         const formData = new FormData();
-        formData.append('image', imageFile);
+        formData.append('file', imageFile);
+        formData.append('bucket', BUCKETS.ARTICLES);
+        
+        console.log('Uploading image with bucket:', BUCKETS.ARTICLES);
         
         const response = await fetch('/api/upload', {
           method: 'POST',
           body: formData,
         });
         
-        if (!response.ok) throw new Error('Failed to upload image');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to upload image');
+        }
+        
         const data = await response.json();
+        console.log('Upload response:', data);
         imageUrl = data.url;
       }
 
-      const { error } = await supabase
+      console.log('Updating article with image URL:', imageUrl);
+
+      // Use the authenticated client for database updates
+      const { error } = await authSupabase
         .from('articles')
         .update({
-          ...article,
+          title: article.title,
+          content: article.content,
+          author: article.author,
           image_url: imageUrl,
+          is_featured: article.is_featured,
+          status: article.status,
+          published_at: article.status === 'published' ? 
+            (article.published_at || new Date().toISOString()) : 
+            article.published_at,
+          magazine_id: article.magazine_id,
+          category: article.category || 'general'
         })
         .eq('id', params.id);
 
       if (error) throw error;
-      router.push('/admin/articles');
-    } catch (error) {
+      
+      // Add a small delay to ensure the database update completes
+      setTimeout(() => {
+        router.push('/admin/articles');
+      }, 500);
+      
+    } catch (error: any) {
       console.error('Error updating article:', error);
-      alert('Failed to update article. Please try again.');
+      setError(error.message || 'Failed to update article. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     setArticle(prev => prev ? {
       ...prev,
@@ -115,6 +159,12 @@ export default function EditArticle({ params }: { params: { id: string } }) {
     <main className="min-h-screen bg-black text-white p-8">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-8 text-red-600">Edit Article</h1>
+        
+        {error && (
+          <div className="mb-6 p-4 bg-red-900/50 border border-red-600 text-red-200 rounded">
+            {error}
+          </div>
+        )}
         
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Title */}
@@ -147,6 +197,28 @@ export default function EditArticle({ params }: { params: { id: string } }) {
               required
               className="w-full px-4 py-2 bg-black border border-red-900 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-600"
             />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label htmlFor="category" className="block text-sm font-medium text-gray-300 mb-2">
+              Category
+            </label>
+            <select
+              id="category"
+              name="category"
+              value={article.category || ''}
+              onChange={handleChange}
+              className="w-full px-4 py-2 bg-black border border-red-900 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-600"
+            >
+              <option value="">Select a category</option>
+              <option value="lifestyle">Lifestyle</option>
+              <option value="food">Food</option>
+              <option value="events">Events</option>
+              <option value="business">Business</option>
+              <option value="people">People</option>
+              <option value="general">General</option>
+            </select>
           </div>
 
           {/* Featured Article */}
@@ -214,10 +286,7 @@ export default function EditArticle({ params }: { params: { id: string } }) {
               id="status"
               name="status"
               value={article.status}
-              onChange={(e) => setArticle(prev => prev ? {
-                ...prev,
-                status: e.target.value as 'draft' | 'published'
-              } : null)}
+              onChange={handleChange}
               className="w-full px-4 py-2 bg-black border border-red-900 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-600"
             >
               <option value="draft">Draft</option>
@@ -246,4 +315,4 @@ export default function EditArticle({ params }: { params: { id: string } }) {
       </div>
     </main>
   );
-} 
+}

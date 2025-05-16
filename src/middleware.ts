@@ -1,90 +1,100 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export async function middleware(req: NextRequest) {
-  console.log('Middleware - Request received:', req.nextUrl.pathname);
+export async function middleware(request: NextRequest) {
+  console.log('Middleware running for:', request.nextUrl.pathname);
   
-  // Create a response object
   const res = NextResponse.next();
-  
-  // Create a Supabase client with the request and response
-  const supabase = createMiddlewareClient({ req, res });
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          // Ensure cookie values are parsed as JSON if needed
+          const value = request.cookies.get(name)?.value;
+          try {
+            return value && JSON.parse(value);
+          } catch {
+            return value;
+          }
+        },
+        set(name: string, value: string, options: any) {
+          // Ensure value is stringified JSON if it's an object
+          const toStore = typeof value === 'object' ? JSON.stringify(value) : value;
+          res.cookies.set({
+            name,
+            value: toStore,
+            ...options,
+          });
+        },
+        remove(name: string, options: any) {
+          res.cookies.set({
+            name,
+            value: '',
+            ...options,
+          });
+        },
+      },
+    }
+  );
 
-  // Get the session cookie
-  const sessionCookie = req.cookies.get('sb-session');
-  console.log('Middleware - Session cookie:', {
-    exists: !!sessionCookie,
-    value: sessionCookie?.value ? 'present' : 'missing'
-  });
-
-  // Try to parse the session cookie
-  let session = null;
   try {
-    if (sessionCookie?.value) {
-      session = JSON.parse(sessionCookie.value);
-      console.log('Middleware - Parsed session:', {
-        hasSession: !!session,
-        userId: session?.user?.id,
-        expiresAt: session?.expires_at
-      });
+    // Get session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    console.log('Session check:', { hasSession: !!session, error: sessionError });
+
+    // Check if user is trying to access login page while logged in
+    if (request.nextUrl.pathname === '/login' && session) {
+      console.log('Logged in user trying to access login page, redirecting to dashboard');
+      return NextResponse.redirect(new URL('/admin/dashboard', request.url));
     }
+
+    // For admin routes, check admin status
+    if (request.nextUrl.pathname.startsWith('/admin')) {
+      console.log('Admin route detected');
+      
+      if (!session) {
+        console.log('No session, redirecting to login');
+        return NextResponse.redirect(new URL('/login', request.url));
+      }
+
+      // Check if user is an admin (check both admins and user_roles tables)
+      const { data: adminsData, error: adminError } = await supabase
+        .from('admins')
+        .select('*')
+        .eq('user_id', session.user.id);
+
+      let isAdmin = Array.isArray(adminsData) && adminsData.length > 0;
+      if (!isAdmin) {
+        // Fallback: check user_roles
+        const { data: rolesData, error: rolesError } = await supabase
+          .from('user_roles')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .eq('role', 'admin');
+        if (rolesError) {
+          console.error('Admin check error (user_roles table):', rolesError);
+        }
+        isAdmin = Array.isArray(rolesData) && rolesData.length > 0;
+      }
+
+      console.log('Admin check:', { isAdmin, error: adminError });
+
+      if (!isAdmin) {
+        console.log('User is not an admin, redirecting to home');
+        return NextResponse.redirect(new URL('/', request.url));
+      }
+    }
+
+    return res;
   } catch (error) {
-    console.log('Middleware - Error parsing session cookie:', error);
+    console.error('Middleware error:', error);
+    return NextResponse.redirect(new URL('/login', request.url));
   }
-
-  // Get the current path
-  const path = req.nextUrl.pathname;
-
-  // Handle authentication redirects
-  if (path === '/login') {
-    console.log('Middleware - Login page check');
-    // If user is already logged in, redirect to dashboard
-    if (session) {
-      console.log('Middleware - Redirecting to dashboard');
-      const redirectTo = req.nextUrl.searchParams.get('redirectedFrom') || '/admin/dashboard';
-      return NextResponse.redirect(new URL(redirectTo, req.url));
-    }
-    return res;
-  }
-
-  // Protect admin routes
-  if (path.startsWith('/admin')) {
-    console.log('Middleware - Admin route check');
-    if (!session) {
-      console.log('Middleware - No session, redirecting to login');
-      const loginUrl = new URL('/login', req.url);
-      loginUrl.searchParams.set('redirectedFrom', path);
-      return NextResponse.redirect(loginUrl);
-    }
-    
-    // Check if user has admin role
-    console.log('Middleware - Checking admin role');
-    const { data: userRole, error: roleError } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', session.user.id)
-      .single();
-    
-    console.log('Middleware - Role check:', {
-      hasRole: !!userRole,
-      role: userRole?.role,
-      error: roleError?.message
-    });
-    
-    if (!userRole || userRole.role !== 'admin') {
-      console.log('Middleware - Access denied');
-      return NextResponse.redirect(new URL('/', req.url));
-    }
-    
-    console.log('Middleware - Admin access granted');
-    return res;
-  }
-
-  console.log('Middleware - Allowing request to proceed');
-  return res;
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/login', '/test'],
+  matcher: ['/admin/:path*', '/login']
 };

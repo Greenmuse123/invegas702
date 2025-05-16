@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1200" fill="none" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="flowGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#dc2626" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.1"/>
+    </linearGradient>
+    <linearGradient id="flowGrad2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#eab308" stop-opacity="0.7"/> 
+      <stop offset="100%" stop-color="#facc15" stop-opacity="0.1"/> 
+    </linearGradient>
+    <linearGradient id="flowGrad3" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#e5e7eb" stop-opacity="0.6"/> 
+      <stop offset="100%" stop-color="#f9fafb" stop-opacity="0.05"/>
+    </linearGradient>
+    <filter id="subtleGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <style>
+    .flowPath1 { animation: flowPulse 15s ease-in-out infinite alternate; }
+    .flowPath2 { animation: flowPulse 18s ease-in-out infinite alternate; animation-delay: -3s; }
+    .flowPath3 { animation: flowPulse 21s ease-in-out infinite alternate; animation-delay: -6s; }
+    
+    @keyframes flowPulse {
+      from { opacity: 0.7; } 
+      to { opacity: 1.0; }
+    }
+  </style>
+
+  <g opacity="0.3" filter="url(#subtleGlow)">
+    <!-- Flowing Energy Lines -->
+    <path class="flowPath1" d="M -100 300 Q 200 100, 600 400 T 1000 200 T 1500 500" stroke="url(#flowGrad1)" stroke-width="1.5" fill="none"/>
+    <path class="flowPath2" d="M 1500 800 Q 1100 1000, 700 700 T 300 900 T -100 600" stroke="url(#flowGrad2)" stroke-width="1" fill="none"/>
+    <path class="flowPath3" d="M -50 1100 Q 400 900, 800 1000 T 1200 850 T 1450 950" stroke="url(#flowGrad3)" stroke-width="2" fill="none"/>
+    
+    <!-- Additional subtle lines -->
+    <path class="flowPath1" d="M 1450 100 Q 1000 300, 600 50 T 200 250 T -50 50" stroke="url(#flowGrad3)" stroke-width="1" fill="none" opacity="0.6" animation-delay="-1.5s"/>
+    <path class="flowPath2" d="M 50 500 Q 500 650, 900 550 T 1300 700" stroke="url(#flowGrad1)" stroke-width="1.5" fill="none" opacity="0.8" animation-delay="-4.5s"/>
+  </g>
+</svg>

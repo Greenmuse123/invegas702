@@ -1,119 +1,118 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
-import { Session } from '@supabase/supabase-js';
-import { useRouter, useSearchParams } from 'next/navigation';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { createBrowserClient } from '@supabase/ssr';
+import { useRouter } from 'next/navigation';
+import { checkAdminStatus } from '../lib/adminUtils';
+import { CartProvider } from './cart/CartContext';
 
-type AuthContextType = {
-  session: Session | null;
-  loading: boolean;
+interface AuthContextType {
+  session: any;
+  isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-};
+  loading: boolean;
+  refreshAdminStatus: () => Promise<void>;
+  supabase: any;
+}
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
-  loading: true,
+  isAdmin: false,
   signIn: async () => {},
   signOut: async () => {},
+  loading: true,
+  refreshAdminStatus: async () => {},
+  supabase: null
 });
 
-export function Providers({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [supabase] = useState(() => createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  ));
+  const [session, setSession] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const searchParams = useSearchParams();
-
-  const handleAuthChange = useCallback((_event: string, session: Session | null) => {
-    console.log('Auth state changed:', { 
-      event: _event, 
-      hasSession: !!session,
-      session: session ? 'present' : 'null'
-    });
-    
-    setSession(session);
-    setLoading(false);
-    
-    if (_event === 'SIGNED_IN' && session) {
-      const redirectTo = searchParams.get('redirectedFrom') || '/admin/dashboard';
-      console.log('Redirecting after sign in:', {
-        redirectTo,
-        sessionPresent: !!session
-      });
-      router.replace(redirectTo);
-    }
-  }, [router, searchParams]);
-
-  const signIn = useCallback(async (email: string, password: string) => {
-    setLoading(true);
-    try {
-      console.log('Attempting sign in...');
-      const { data, error } = await supabase.auth.signInWithPassword({ 
-        email, 
-        password
-      });
-      
-      console.log('Sign in response:', { 
-        hasData: !!data, 
-        hasError: !!error,
-        error: error?.message,
-        session: data?.session ? 'present' : 'null'
-      });
-      
-      if (error) throw error;
-      
-      // Ensure session is set
-      if (data?.session) {
-        setSession(data.session);
-        const redirectTo = searchParams.get('redirectedFrom') || '/admin/dashboard';
-        router.replace(redirectTo);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [router, searchParams]);
-
-  const signOut = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      setSession(null);
-      router.push('/');
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
 
   useEffect(() => {
-    let mounted = true;
-
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (mounted) {
-        console.log('Initial session check:', session ? 'present' : 'null');
-        setSession(session);
-        setLoading(false);
+    const getSession = async () => {
+      const { data } = await supabase.auth.getSession();
+      setSession(data.session);
+      setLoading(false);
+      if (data.session?.user) {
+        checkAdminStatus(supabase, data.session.user.id).then(setIsAdmin);
+      } else {
+        setIsAdmin(false);
+      }
+    };
+    getSession();
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session?.user) {
+        checkAdminStatus(supabase, session.user.id).then(setIsAdmin);
+      } else {
+        setIsAdmin(false);
       }
     });
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(handleAuthChange);
-
     return () => {
-      mounted = false;
-      subscription.unsubscribe();
+      listener.subscription.unsubscribe();
     };
-  }, [handleAuthChange]);
+  }, [supabase]);
+
+  const refreshAdminStatus = async () => {
+    if (!session?.user) {
+      setIsAdmin(false);
+      return;
+    }
+    const adminStatus = await checkAdminStatus(supabase, session.user.id);
+    setIsAdmin(adminStatus);
+  };
+
+  const signIn = async (email: string, password: string) => {
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    setLoading(false);
+    // session and isAdmin will update via useEffect
+  };
+
+  const signOut = async () => {
+    setLoading(true);
+    const { error } = await supabase.auth.signOut();
+    setLoading(false);
+    if (error) throw error;
+    router.push('/');
+  };
+
+  const contextValue = {
+    session,
+    isAdmin,
+    signIn,
+    signOut,
+    loading,
+    refreshAdminStatus,
+    supabase,
+  };
 
   return (
-    <AuthContext.Provider value={{ session, loading, signIn, signOut }}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
+export function RootProviders({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthProvider>
+      <CartProvider>
+        {children}
+      </CartProvider>
+    </AuthProvider>
+  );
+}
+
+export function useAuth() {
+  return useContext(AuthContext);
+}

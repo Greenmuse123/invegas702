@@ -102,7 +102,32 @@ export function Footer() {
             <p className="text-gray-300 mb-4">
               Subscribe to our newsletter for the latest updates and exclusive content.
             </p>
-            <form className="flex gap-2">
+            <form className="flex gap-2" onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.currentTarget;
+              const input = form.querySelector('input[type=email]') as HTMLInputElement;
+              const email = input?.value.trim();
+              if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+                alert('Please enter a valid email address.');
+                return;
+              }
+              try {
+                const res = await fetch('/api/newsletter/subscribe', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email }),
+                });
+                if (res.ok) {
+                  alert('Thank you for subscribing!');
+                  input.value = '';
+                } else {
+                  const data = await res.json().catch(() => ({}));
+                  alert(data?.error || 'Subscription failed.');
+                }
+              } catch {
+                alert('Network error. Please try again later.');
+              }
+            }}>
               <input
                 type="email"
                 placeholder="Enter your email"
@@ -121,7 +146,7 @@ export function Footer() {
         {/* Bottom */}
         <div className="mt-12 pt-8 border-t border-gray-700">
           <p className="text-center text-gray-400">
-            © {new Date().getFullYear()} InVegas702. All rights reserved.
+            {new Date().getFullYear()} InVegas702. All rights reserved.
           </p>
         </div>
       </div>

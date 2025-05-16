@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabase';
@@ -19,6 +19,13 @@ export default function AdminDashboardLayout({
     authLoading 
   });
 
+  useEffect(() => {
+    if (!authLoading && !session) {
+      console.log('No session, redirecting to login');
+      router.push('/login');
+    }
+  }, [session, authLoading, router]);
+
   if (authLoading) {
     console.log('Dashboard Layout - Loading state');
     return (
@@ -29,7 +36,11 @@ export default function AdminDashboardLayout({
   }
 
   if (!session) {
-    return null;
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-xl">Redirecting to login...</div>
+      </div>
+    );
   }
 
   console.log('Dashboard Layout - Rendering content with session:', session);

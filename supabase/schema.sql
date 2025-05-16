@@ -6,7 +6,7 @@ CREATE TABLE magazines (
   description TEXT NOT NULL,
   cover_image_url TEXT,
   pdf_url TEXT,
-  total_pages INTEGER NOT NULL,
+  total_pages INTEGER DEFAULT 1,
   status TEXT NOT NULL CHECK (status IN ('draft', 'published')),
   published_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

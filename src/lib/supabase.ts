@@ -3,7 +3,18 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey)
+console.log('Initializing Supabase client with:', {
+  url: supabaseUrl,
+  hasAnonKey: !!supabaseAnonKey
+});
+
+export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
+})
 
 // Auth helper functions
 export const getServerSession = async () => {
@@ -12,11 +23,11 @@ export const getServerSession = async () => {
 };
 
 export const signIn = async (email: string, password: string) => {
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
-  return { error };
+  return { data, error };
 };
 
 export const signOut = async () => {
@@ -26,7 +37,7 @@ export const signOut = async () => {
 
 // Storage bucket names
 export const BUCKETS = {
-  MAGAZINES: 'magazines',
+  MAGAZINES: 'magazines-storage',
   ARTICLES: 'articles',
   EVENTS: 'events'
 } as const;
